@@ -18,7 +18,7 @@ cdef extern from "math.h":
     double exp(double)
     double round(double)
 
-cdef tf(double x, double y, M):
+cdef tf(double x, double y, np.ndarray M):
     cdef np.ndarray[np.double_t, ndim=2] H = M
     cdef double xx, yy, zz
 
@@ -31,19 +31,19 @@ cdef tf(double x, double y, M):
 
     return xx, yy
 
-cpdef bilinear(int MM, int NN, list HH, int M, int N,
+cpdef bilinear(int MM, int NN, np.ndarray HH, int M=-1, int N=-1,
                int boundary=0):
     """Represent the camera process as a simple bilinear interpolation.
 
     Parameters
     ----------
     MM, NN : int
-        Shape of the high-resolution image.
-    HH : list of (3,3) ndarray
-        Transformation matrices that warp the high-resolution frame
-        to the individual low-resolution frames.
-    M, N : int
-        Dimensions of a single low-resolution output frame.
+        Shape of the source image.
+    HH : (3,3) ndarray
+        Transformation matrix for warping coordinates in the
+        input image to the output.
+    M, N : int, -1
+        Shape of the output image.  If -1, the same as MM, NN.
     boundary : {0, 1}
         Outside boundary use zero (0) or mirror (1).
 
@@ -56,46 +56,48 @@ cpdef bilinear(int MM, int NN, list HH, int M, int N,
     """
     cdef int out_M, out_N
 
-    out_M = len(HH) * M * N
+    if M == -1:
+        M = MM
+    if N == -1:
+        N = NN
+
+    out_M = M * N
     out_N = MM * NN
 
     cdef list I = [], J = [], V = []
 
-    cdef np.ndarray[np.double_t, ndim=2] H
+    cdef np.ndarray[np.double_t, ndim=2] H = np.linalg.inv(HH)
 
     cdef int i, j, p, q, xx, yy, R
     cdef double ii, jj, t, u
 
-    for k in range(len(HH)):
-        H = np.linalg.inv(HH[k])
+    for i in range(M):
+        for j in range(N):
+            jj, ii = tf(j, i, H)
 
-        for i in range(M):
-            for j in range(N):
-                jj, ii = tf(j, i, H)
+            xx = (int)(floor(jj))
+            yy = (int)(floor(ii))
 
-                xx = (int)(floor(jj))
-                yy = (int)(floor(ii))
+            if boundary == 1:
+                yy = (yy % (MM - 1))
+                xx = (xx % (NN - 1))
+            elif xx < 0 or yy < 0 or yy >= (MM - 1) or xx >= (NN - 1):
+                continue
 
-                if boundary == 1:
-                    yy = (yy % (MM - 1))
-                    xx = (xx % (NN - 1))
-                elif xx < 0 or yy < 0 or yy >= (MM - 1) or xx >= (NN - 1):
-                    continue
+            t = ii - yy
+            u = jj - xx
 
-                t = ii - yy
-                u = jj - xx
+            R = i * N + j
 
-                R = k*M*N + i * N + j
-
-                I.extend([R, R, R, R])
-                J.extend([yy*NN + xx,
-                          (yy + 1)*NN + xx,
-                          (yy + 1)*NN + xx + 1,
-                          yy*NN + xx + 1])
-                V.extend([(1 - t) * (1 - u),
-                          t * (1 - u),
-                          t * u,
-                          (1 - t) * u])
+            I.extend([R, R, R, R])
+            J.extend([yy*NN + xx,
+                      (yy + 1)*NN + xx,
+                      (yy + 1)*NN + xx + 1,
+                      yy*NN + xx + 1])
+            V.extend([(1 - t) * (1 - u),
+                      t * (1 - u),
+                      t * u,
+                      (1 - t) * u])
 
     return sparse.coo_matrix((V, (I, J)), shape=(out_M, out_N)).tocsr()
 

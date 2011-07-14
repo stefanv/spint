@@ -42,13 +42,13 @@ def test_bilinear():
                   [0,    1/2., 0],
                   [0,    0,    1]])
     A = bilinear(HR.shape[0], HR.shape[1],
-                 [H, H],
+                 H,
                  HR.shape[0] / 2, HR.shape[1]/2)
 
     p = np.prod(HR.shape)
-    assert_equal(A.shape, (2 * p/4, np.prod(HR.shape)))
+    assert_equal(A.shape, (p/4, np.prod(HR.shape)))
 
-    HR_small = (A[p/4:, :] * HR.flat).reshape(np.array(HR.shape) / 2)
+    HR_small = (A * HR.flat).reshape(np.array(HR.shape) / 2)
     err_norm = np.linalg.norm(ndi.zoom(HR, 0.5) - HR_small)
     err_norm /= np.prod(HR_small.shape)
 
@@ -83,10 +83,10 @@ if __name__ == "__main__":
     tx, ty = 0, 0
 
     A = bilinear(HR.shape[0], HR.shape[1],
-                 [np.array([[C/scale, -S,        tx],
-                            [S,        C/scale,  ty],
-                            [0,        0,        1.]])],
-                  HR.shape[0] / scale, HR.shape[1] / scale)
+                 np.array([[C/scale, -S,        tx],
+                           [S,        C/scale,  ty],
+                           [0,        0,        1.]]),
+                 HR.shape[0] / scale, HR.shape[1] / scale)
 
 
     C = convolve(HR.shape[0], HR.shape[1], gauss(5, std=1))
